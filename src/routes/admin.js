@@ -6,8 +6,6 @@ const { exigirAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
-// Limita tentativas de login: no máximo 5 tentativas a cada 10 minutos,
-// por IP. Protege contra alguém tentando adivinhar a senha por força bruta.
 const limiteLogin = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
@@ -16,10 +14,7 @@ const limiteLogin = rateLimit({
   legacyHeaders: false,
 });
 
-// ============================================
 // POST /api/admin/login — confere a senha única
-// Não existe cadastro/usuário: só uma senha combinada com você.
-// ============================================
 router.post("/login", limiteLogin, (req, res) => {
   const { senha } = req.body;
 
@@ -31,23 +26,41 @@ router.post("/login", limiteLogin, (req, res) => {
     expiresIn: "12h",
   });
 
-  res.json({ token });
+  res.json({ token, user: { role: "admin" } });
 });
 
-// A partir daqui, todas as rotas exigem o token do passo acima
+// A partir daqui, todas as rotas exigem o token do login
 router.use(exigirAdmin);
 
-// GET /api/admin/produtos — lista TODOS os produtos (ativos e inativos)
+// GET /api/admin/verify — confirma se o token salvo ainda é válido
+// (usado pelo frontend pra manter o login "lembrado" ao recarregar a página)
+router.get("/verify", (req, res) => {
+  res.json({ valid: true, user: { role: "admin" } });
+});
+
+// GET /api/admin/produtos — lista TODOS os produtos (ativos e inativos), com variações
 router.get("/produtos", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows: produtos } = await pool.query(
       `SELECT p.id, p.nome, p.preco, p.descricao, p.imagem_url, p.ativo,
               p.ordem, p.categoria_id, c.nome AS categoria
        FROM produtos p
        JOIN categorias c ON c.id = p.categoria_id
        ORDER BY p.criado_em DESC`
     );
-    res.json(rows);
+
+    const { rows: variacoes } = await pool.query(
+      `SELECT id, produto_id, cor, imagem_url, ativo
+       FROM variacoes_produto
+       ORDER BY ordem ASC, cor ASC`
+    );
+
+    const produtosComVariacoes = produtos.map((produto) => ({
+      ...produto,
+      variacoes: variacoes.filter((v) => v.produto_id === produto.id),
+    }));
+
+    res.json(produtosComVariacoes);
   } catch (err) {
     console.error(err);
     res.status(500).json({ erro: "Erro ao buscar produtos." });
