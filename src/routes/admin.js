@@ -1,15 +1,26 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 const { pool } = require("../db");
 const { exigirAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
+// Limita tentativas de login: no máximo 5 tentativas a cada 10 minutos,
+// por IP. Protege contra alguém tentando adivinhar a senha por força bruta.
+const limiteLogin = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: { erro: "Muitas tentativas de login. Tente novamente em alguns minutos." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ============================================
 // POST /api/admin/login — confere a senha única
 // Não existe cadastro/usuário: só uma senha combinada com você.
 // ============================================
-router.post("/login", (req, res) => {
+router.post("/login", limiteLogin, (req, res) => {
   const { senha } = req.body;
 
   if (!senha || senha !== process.env.ADMIN_PASSWORD) {

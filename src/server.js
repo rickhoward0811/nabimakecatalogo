@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 
 const produtosRouter = require("./routes/produtos");
 const categoriasRouter = require("./routes/categorias");
@@ -8,10 +9,22 @@ const adminRouter = require("./routes/admin");
 
 const app = express();
 
+// Headers de segurança HTTP (protege contra clickjacking, sniffing, etc.)
+app.use(helmet());
+
 app.use(express.json());
+
+// CORS: só libera os domínios explicitamente permitidos.
+// Em produção, defina FRONTEND_URL com a URL real da Vercel (ex: https://nabimake.vercel.app).
+// Durante o desenvolvimento local, o localhost:5173 do Vite já vem liberado.
+const origensPermitidas = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "*",
+    origin: origensPermitidas,
   })
 );
 
