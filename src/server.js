@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const cuponsRouter = require("./routes/cupons");
 
 const produtosRouter = require("./routes/produtos");
 const categoriasRouter = require("./routes/categorias");
@@ -31,6 +32,7 @@ app.use(
 // Rotas públicas (usadas pelo catálogo)
 app.use("/api/produtos", produtosRouter);
 app.use("/api/categorias", categoriasRouter);
+app.use("/api/cupons", cuponsRouter);
 
 // Rotas de admin (login + CRUD, protegidas por senha única + token)
 app.use("/api/admin", adminRouter);
