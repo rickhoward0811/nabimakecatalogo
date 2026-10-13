@@ -1,3 +1,4 @@
+
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
@@ -16,7 +17,7 @@ const limiteLogin = rateLimit({
   legacyHeaders: false,
 });
 
-// POST /api/admin/login — confere a senha única
+// POST /api/admin/login
 router.post("/login", limiteLogin, (req, res) => {
   const { senha } = req.body;
 
@@ -31,57 +32,23 @@ router.post("/login", limiteLogin, (req, res) => {
   res.json({ token, user: { role: "admin" } });
 });
 
-// A partir daqui, todas as rotas exigem o token do login
+// Todas as rotas seguintes exigem autenticação de administrador.
 router.use(exigirAdmin);
 
-router.use(exigirAdmin);
-
-// DELETE /api/admin/cupons/:id
-router.delete("/cupons/:id", async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const { rows } = await pool.query(
-      `DELETE FROM cupons
-       WHERE id = $1
-       RETURNING id, codigo`,
-      [id],
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        erro: "Cupom não encontrado.",
-      });
-    }
-
-    res.json({
-      mensagem: "Cupom excluído com sucesso.",
-      cupom: rows[0],
-    });
-  } catch (err) {
-    console.error("Erro ao excluir cupom:", err);
-
-    res.status(500).json({
-      erro: "Erro ao excluir cupom.",
-    });
-  }
-});
-
-// GET /api/admin/verify — confirma se o token salvo ainda é válido
-// (usado pelo frontend pra manter o login "lembrado" ao recarregar a página)
+// GET /api/admin/verify
 router.get("/verify", (req, res) => {
   res.json({ valid: true, user: { role: "admin" } });
 });
 
-// GET /api/admin/cupons — listar cupons
+// GET /api/admin/cupons
 router.get("/cupons", async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT id, codigo, tipo, valor, ativo, validade,
-              limite_usos, usos, criado_em
-       FROM cupons
-       ORDER BY criado_em DESC`,
-    );
+    const { rows } = await pool.query(`
+      SELECT id, codigo, tipo, valor, ativo, validade,
+             limite_usos, usos, criado_em
+      FROM cupons
+      ORDER BY criado_em DESC
+    `);
 
     res.json(rows);
   } catch (err) {
@@ -90,15 +57,13 @@ router.get("/cupons", async (req, res) => {
   }
 });
 
-// POST /api/admin/cupons — criar cupom
+// POST /api/admin/cupons
 router.post("/cupons", async (req, res) => {
-  const codigo = String(req.body.codigo || "")
-    .trim()
-    .toUpperCase();
+  const codigo = String(req.body.codigo || "").trim().toUpperCase();
   const { tipo } = req.body;
   const valor = Number(req.body.valor);
-
   const validade = req.body.validade || null;
+
   const limiteUsos =
     req.body.limite_usos === "" ||
     req.body.limite_usos === null ||
@@ -166,7 +131,7 @@ router.post("/cupons", async (req, res) => {
   }
 });
 
-// PATCH /api/admin/cupons/:id/ativo — ativar/desativar
+// PATCH /api/admin/cupons/:id/ativo
 router.patch("/cupons/:id/ativo", async (req, res) => {
   const { id } = req.params;
   const { ativo } = req.body;
@@ -188,36 +153,59 @@ router.patch("/cupons/:id/ativo", async (req, res) => {
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({
-        erro: "Cupom não encontrado.",
-      });
+      return res.status(404).json({ erro: "Cupom não encontrado." });
     }
 
     res.json(rows[0]);
   } catch (err) {
     console.error("Erro ao atualizar cupom:", err);
-    res.status(500).json({
-      erro: "Erro ao atualizar cupom.",
-    });
+    res.status(500).json({ erro: "Erro ao atualizar cupom." });
   }
 });
 
-// GET /api/admin/produtos — lista TODOS os produtos (ativos e inativos), com variações
-router.get("/produtos", async (req, res) => {
+// DELETE /api/admin/cupons/:id
+router.delete("/cupons/:id", async (req, res) => {
+  const { id } = req.params;
+
   try {
-    const { rows: produtos } = await pool.query(
-      `SELECT p.id, p.nome, p.preco, p.descricao, p.imagem_url, p.ativo,
-              p.ordem, p.categoria_id, c.nome AS categoria
-       FROM produtos p
-       JOIN categorias c ON c.id = p.categoria_id
-       ORDER BY p.criado_em DESC`,
+    const { rows } = await pool.query(
+      `DELETE FROM cupons
+       WHERE id = $1
+       RETURNING id, codigo`,
+      [id],
     );
 
-    const { rows: variacoes } = await pool.query(
-      `SELECT id, produto_id, cor, imagem_url, ativo
-       FROM variacoes_produto
-       ORDER BY ordem ASC, cor ASC`,
-    );
+    if (rows.length === 0) {
+      return res.status(404).json({ erro: "Cupom não encontrado." });
+    }
+
+    res.json({
+      mensagem: "Cupom excluído com sucesso.",
+      cupom: rows[0],
+    });
+  } catch (err) {
+    console.error("Erro ao excluir cupom:", err);
+    res.status(500).json({ erro: "Erro ao excluir cupom." });
+  }
+});
+
+// GET /api/admin/produtos
+router.get("/produtos", async (req, res) => {
+  try {
+    const { rows: produtos } = await pool.query(`
+      SELECT p.id, p.nome, p.preco, p.descricao, p.imagem_url,
+             p.ativo, p.estoque, p.ordem, p.categoria_id,
+             c.nome AS categoria
+      FROM produtos p
+      JOIN categorias c ON c.id = p.categoria_id
+      ORDER BY p.criado_em DESC
+    `);
+
+    const { rows: variacoes } = await pool.query(`
+      SELECT id, produto_id, cor, imagem_url, ativo
+      FROM variacoes_produto
+      ORDER BY ordem ASC, cor ASC
+    `);
 
     const produtosComVariacoes = produtos.map((produto) => ({
       ...produto,
@@ -226,26 +214,47 @@ router.get("/produtos", async (req, res) => {
 
     res.json(produtosComVariacoes);
   } catch (err) {
-    console.error(err);
+    console.error("Erro ao buscar produtos:", err);
     res.status(500).json({ erro: "Erro ao buscar produtos." });
   }
 });
 
-// POST /api/admin/produtos — cria um produto novo
+// POST /api/admin/produtos
 router.post("/produtos", async (req, res) => {
-  const { nome, categoria_id, preco, descricao, imagem_url, ativo, ordem } =
-    req.body;
+  const {
+    nome,
+    categoria_id,
+    preco,
+    descricao,
+    imagem_url,
+    ativo,
+    ordem,
+  } = req.body;
+
+  const estoque =
+    req.body.estoque === undefined ? 0 : req.body.estoque;
 
   if (!nome || !categoria_id || preco === undefined) {
-    return res
-      .status(400)
-      .json({ erro: "nome, categoria_id e preco são obrigatórios." });
+    return res.status(400).json({
+      erro: "nome, categoria_id e preco são obrigatórios.",
+    });
+  }
+
+  if (
+    estoque === "" ||
+    !Number.isInteger(Number(estoque)) ||
+    Number(estoque) < 0
+  ) {
+    return res.status(400).json({
+      erro: "O estoque deve ser um número inteiro não negativo.",
+    });
   }
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO produtos (nome, categoria_id, preco, descricao, imagem_url, ativo, ordem)
-       VALUES ($1, $2, $3, $4, $5, COALESCE($6, true), COALESCE($7, 0))
+      `INSERT INTO produtos
+        (nome, categoria_id, preco, descricao, imagem_url, ativo, ordem, estoque)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, true), COALESCE($7, 0), $8)
        RETURNING *`,
       [
         nome,
@@ -255,20 +264,42 @@ router.post("/produtos", async (req, res) => {
         imagem_url || null,
         ativo,
         ordem,
+        Number(estoque),
       ],
     );
+
     res.status(201).json(rows[0]);
   } catch (err) {
-    console.error(err);
+    console.error("Erro ao criar produto:", err);
     res.status(500).json({ erro: "Erro ao criar produto." });
   }
 });
 
-// PUT /api/admin/produtos/:id — edita um produto existente
+// PUT /api/admin/produtos/:id
 router.put("/produtos/:id", async (req, res) => {
   const { id } = req.params;
-  const { nome, categoria_id, preco, descricao, imagem_url, ativo, ordem } =
-    req.body;
+  const {
+    nome,
+    categoria_id,
+    preco,
+    descricao,
+    imagem_url,
+    ativo,
+    ordem,
+  } = req.body;
+
+  const estoque = req.body.estoque;
+
+  if (
+    estoque !== undefined &&
+    (estoque === "" ||
+      !Number.isInteger(Number(estoque)) ||
+      Number(estoque) < 0)
+  ) {
+    return res.status(400).json({
+      erro: "O estoque deve ser um número inteiro não negativo.",
+    });
+  }
 
   try {
     const { rows } = await pool.query(
@@ -279,10 +310,21 @@ router.put("/produtos/:id", async (req, res) => {
          descricao = COALESCE($4, descricao),
          imagem_url = COALESCE($5, imagem_url),
          ativo = COALESCE($6, ativo),
-         ordem = COALESCE($7, ordem)
-       WHERE id = $8
+         ordem = COALESCE($7, ordem),
+         estoque = COALESCE($8, estoque)
+       WHERE id = $9
        RETURNING *`,
-      [nome, categoria_id, preco, descricao, imagem_url, ativo, ordem, id],
+      [
+        nome,
+        categoria_id,
+        preco,
+        descricao,
+        imagem_url,
+        ativo,
+        ordem,
+        estoque === undefined ? null : Number(estoque),
+        id,
+      ],
     );
 
     if (rows.length === 0) {
@@ -291,12 +333,12 @@ router.put("/produtos/:id", async (req, res) => {
 
     res.json(rows[0]);
   } catch (err) {
-    console.error(err);
+    console.error("Erro ao atualizar produto:", err);
     res.status(500).json({ erro: "Erro ao atualizar produto." });
   }
 });
 
-// DELETE /api/admin/produtos/:id — remove um produto
+// DELETE /api/admin/produtos/:id
 router.delete("/produtos/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -312,7 +354,7 @@ router.delete("/produtos/:id", async (req, res) => {
 
     res.status(204).send();
   } catch (err) {
-    console.error(err);
+    console.error("Erro ao remover produto:", err);
     res.status(500).json({ erro: "Erro ao remover produto." });
   }
 });
